@@ -486,7 +486,7 @@ export default function DandiyaRegistrationApp() {
       </main>
 
       <footer className="max-w-6xl mx-auto px-4 sm:px-6 pb-8 text-amber-200/80 text-xs flex items-center justify-between">
-        <div>© {new Date().getFullYear()} NTU Indian Society · All rights reserved</div>
+        <div> {new Date().getFullYear()} NTU Indian Society · NTU Indian Dance</div>
         <div>Built with ❤️ for the dandiya season</div>
       </footer>
     </div>
