@@ -45,10 +45,7 @@ const CONFIG = {
     timeStr: "6:00 PM – 10:00 PM",
     venue: "Nanyang Auditorium, Level 3",
     city: "NTU Singapore",
-  },
-  integrations: {
-    webhookUrl: "https://script.google.com/macros/s/AKfycby6IanqZhJwpmzC7Ry0DLA-qxwIXn0IShv5P6cSfZM7lb9TsjzDoMYraTnDmZppPlvv/exec", // Apps Script /exec URL
-  },
+  }
 };
 
 // ===== Simple local counters (replace with DB if needed) =====
@@ -137,33 +134,30 @@ export default function DandiyaRegistrationApp() {
   }, [form.name, form.phone]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!valid) return;
+  e.preventDefault();
+  if (!valid) return;
 
-    try {
-      const key = "ntu_dandiya_registrations";
-      const list = JSON.parse(localStorage.getItem(key) || "[]");
-      list.push({ ...form, isNTU, price, paymentRef, ts: Date.now() });
-      localStorage.setItem(key, JSON.stringify(list));
-    } catch {}
+  // Save a local copy (optional, for your own backup)
+  try {
+    const key = "ntu_dandiya_registrations";
+    const list = JSON.parse(localStorage.getItem(key) || "[]");
+    list.push({ ...form, isNTU, price, paymentRef, ts: Date.now() });
+    localStorage.setItem(key, JSON.stringify(list));
+  } catch {}
 
-    // Safari‑friendly POST
-    if (CONFIG.integrations.webhookUrl) {
-      try {
-        await fetch(CONFIG.integrations.webhookUrl, {
-  method: "POST",
-  mode: "no-cors",
-  headers: { "Content-Type": "text/plain;charset=utf-8" },
-  body: JSON.stringify({ ...form, isNTU, price, paymentRef, event: CONFIG.event }),
-});
-
-      } catch (err) {
-        console.error("Webhook error", err);
-      }
-    }
-
-    setStep("pay");
+  // Send to your secure server route (no CONFIG.integrations needed)
+  try {
+    await fetch("/api/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...form, isNTU, price, paymentRef, event: CONFIG.event }),
+    });
+  } catch (err) {
+    console.error("Proxy error", err);
   }
+
+  setStep("pay");
+}
 
   function handlePaidAndConfirm() {
     bumpNonNTUSignupCount(isNTU);
