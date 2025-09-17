@@ -384,7 +384,7 @@ export default function DandiyaRegistrationApp() {
                     reference below so we can match your payment quickly.
                   </p>
                   <div className="p-4 rounded-xl bg-[#3f1a12]/50 border border-amber-100/20">
-                    <div className="text-xs text-amber-200/80">Copy this into PayNow “Remarks”</div>
+                    <div className="text-xs text-amber-200/80">Copy this into PayNow “Comments for Recipient”</div>
                     <div className="flex items-center justify-between mt-1">
                       <code className="text-lg font-mono text-yellow-200">{paymentRef}</code>
                       <Button
@@ -398,8 +398,8 @@ export default function DandiyaRegistrationApp() {
                   </div>
                   <ul className="list-disc list-inside text-sm text-amber-100/85 space-y-1">
                     <li>Open your banking app → PayNow QR → Scan.</li>
-                    <li>Pay the exact amount <b>${price}.00</b>.</li>
-                    <li>Paste the <b>Payment Reference</b> into the Remarks field.</li>
+                    <li>Pay <b>${price}.00</b>.</li>
+                    <li>Paste the <b>Payment Reference</b> into the Comments field on PayNow.</li>
                   </ul>
                 </div>
               </div>
@@ -431,11 +431,10 @@ export default function DandiyaRegistrationApp() {
                 <div>
                   <h3 className="font-semibold">What happens next</h3>
                   <p className="text-amber-100/90 mt-2 text-sm">
-                    We’ve received your registration. You’ll get a confirmation message via Telegram/WhatsApp
-                    within 48 hours after we verify your payment.
+                    We’ve received your registration. You’ll get a confirmation message to join the Telegram channel after we verify your payment.
                   </p>
                   <div className="mt-4 p-4 rounded-xl bg-[#3f1a12]/50 border border-amber-100/20 text-sm">
-                    <div className="text-amber-200/80">Your details</div>
+                    <div className="text-amber-200/80">Your Details</div>
                     <ul className="mt-2 space-y-1">
                       <li>
                         <b>Name:</b> {form.name}
@@ -462,7 +461,7 @@ export default function DandiyaRegistrationApp() {
                   </div>
                 </div>
                 <div>
-                  <h3 className="font-semibold">Event instructions</h3>
+                  <h3 className="font-semibold">Event Instructions</h3>
                   <ul className="text-sm text-amber-100/90 mt-2 space-y-2 list-disc list-inside">
                     <li>
                       📍 <b>{CONFIG.event.venue}</b>, {CONFIG.event.city}
@@ -475,10 +474,9 @@ export default function DandiyaRegistrationApp() {
                     </li>
                     <li>Bring student ID and payment proof screenshot.</li>
                     <li>Dress code: colorful ethnic or smart casual (comfortable for dancing!)</li>
-                    <li>No outside food/drinks in the auditorium.</li>
                   </ul>
                   <div className="mt-4 text-xs text-amber-200/80">
-                    Need help? DM <span className="font-medium">@ntudandiya</span> on Telegram.
+                    Need help? DM <span className="font-medium">@rakshita_bubna</span>, <span className="font-medium">@madhavvth</span> or <span className="font-medium">@shreyvivek</span> on Telegram or <span className="font-medium">@indsoc_ntu</span> on Instagram.
                   </div>
                 </div>
               </div>
