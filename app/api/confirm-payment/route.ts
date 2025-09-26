@@ -17,51 +17,35 @@ function b64ToBuffer(dataUrl: string) {
 export async function POST(req: NextRequest) {
   try {
     const {
-      name,
-      phone,
-      university,
-      isNTU,
-      price,
-      paynowReferenceTyped,
-      paymentProofDataUrl,
-      event,
+      name, phone, university, isNTU, price,
+      paynowReferenceTyped, paymentProofDataUrl, event,
     } = await req.json();
 
     if (!paymentProofDataUrl || !paynowReferenceTyped) {
-      return NextResponse.json({ ok: false, error: "Missing payment proof or typed reference." }, { status: 400 });
+      return NextResponse.json({ ok:false, error:"Missing payment proof or typed reference." }, { status:400 });
     }
 
-    // ---- Validate env early and clearly ----
+    // ---- Drive creds
     const SA_EMAIL = process.env.GDRIVE_CLIENT_EMAIL;
-    const SA_KEY_RAW = process.env.GDRIVE_PRIVATE_KEY || "";
-    const FOLDER_ID = process.env.GDRIVE_FOLDER_ID || ""; // optional but recommended
+    const SA_KEY = (process.env.GDRIVE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+    const FOLDER_ID = process.env.GDRIVE_FOLDER_ID || ""; // optional
 
-    if (!SA_EMAIL || !SA_KEY_RAW) {
-      return NextResponse.json(
-        { ok: false, error: "Drive credentials missing (GDRIVE_CLIENT_EMAIL / GDRIVE_PRIVATE_KEY)." },
-        { status: 500 }
-      );
+    if (!SA_EMAIL || !SA_KEY) {
+      return NextResponse.json({ ok:false, error:"Drive credentials missing." }, { status:500 });
     }
 
-    // IMPORTANT: private key must contain real newlines
-    const SA_KEY = SA_KEY_RAW.replace(/\\n/g, "\n");
-
-    // ---- Decode image (note: base64 inflates size by ~33%) ----
+    // ---- Decode image
     const { buffer, mimeType } = b64ToBuffer(paymentProofDataUrl);
     const ext = mimeType === "image/png" ? "png" : mimeType === "image/jpeg" ? "jpg" : "png";
 
-    // ---- Init Google Drive client ----
+    // ---- Drive client
     const auth = new google.auth.GoogleAuth({
-      credentials: {
-        client_email: SA_EMAIL,
-        private_key: SA_KEY,
-      },
+      credentials: { client_email: SA_EMAIL, private_key: SA_KEY },
       scopes: ["https://www.googleapis.com/auth/drive.file"],
     });
-
     const drive = google.drive({ version: "v3", auth });
 
-    // ---- Compute filename ----
+    // ---- Filename
     const safeName = String(name || "anon").replace(/[^A-Za-z0-9 _-]/g, "").slice(0, 40);
     const last4 = String(phone || "").replace(/\D/g, "").slice(-4) || "0000";
     const now = new Date();
@@ -72,10 +56,8 @@ export async function POST(req: NextRequest) {
     const mm = String(now.getMinutes()).padStart(2, "0");
     const filename = `${safeName}-${last4}-${y}${m}${d}-${hh}${mm}.${ext}`;
 
-    // ---- Upload to Drive (use a stream; some environments dislike raw Buffers) ----
-    // Make the buffer a Readable stream:
+    // ---- Upload (stream)
     const bodyStream = Readable.from(buffer);
-
     const upload = await drive.files.create({
       requestBody: {
         name: filename,
@@ -87,19 +69,17 @@ export async function POST(req: NextRequest) {
       fields: "id,name,parents",
     });
 
-    // ---- Build final reference (AA1234-YYYYMMDD) ----
-    const initials = String(name || "").replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase() || "NT";
+    // ---- Final reference AA1234-YYYYMMDD
+    const initials = String(name || "").replace(/[^A-Za-z]/g, "").slice(0,2).toUpperCase() || "NT";
     const finalRef = `${initials}${last4}-${y}${m}${d}`;
 
-    // ---- Append a PAID row in Google Sheets via Apps Script (optional but recommended) ----
+    // ---- Append to Sheet via Apps Script (optional)
     try {
       const APP_URL = process.env.APPS_SCRIPT_URL;
       const APP_TOKEN = process.env.APPS_SCRIPT_TOKEN;
-
       if (APP_URL && APP_TOKEN) {
         const url = new URL(APP_URL);
         url.searchParams.set("token", APP_TOKEN);
-
         const res = await fetch(url.toString(), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -107,26 +87,19 @@ export async function POST(req: NextRequest) {
             action: "appendPaid",
             dedupeKey: finalRef,
             data: {
-              name,
-              phone,
-              university,
-              isNTU,
-              price,
-              paynowReferenceTyped,
-              finalRef,
+              name, phone, university, isNTU, price,
+              paynowReferenceTyped, finalRef,
               driveFileId: upload.data.id,
-              event,
-              paidAtISO: now.toISOString(),
+              event, paidAtISO: now.toISOString(),
             },
           }),
         });
-
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
-          console.error("Apps Script appendPaid failed:", res.status, txt);
-          // Not fatal—file is already in Drive—but we surface the warning:
+          console.error("appendPaid failed:", res.status, txt);
+          // Not fatal—Drive upload succeeded
           return NextResponse.json({
-            ok: true,
+            ok:true,
             fileId: upload.data.id,
             fileName: upload.data.name,
             finalRef,
@@ -134,23 +107,15 @@ export async function POST(req: NextRequest) {
           });
         }
       } else {
-        console.warn("APPS_SCRIPT_URL or APPS_SCRIPT_TOKEN not set. Skipping sheet append for payment.");
+        console.warn("APPS_SCRIPT_URL/APPS_SCRIPT_TOKEN missing; skipping paid append.");
       }
     } catch (e) {
       console.error("Apps Script appendPaid error:", e);
-      // Proceed anyway; Drive upload succeeded
     }
 
-    return NextResponse.json({
-      ok: true,
-      fileId: upload.data.id,
-      fileName: upload.data.name,
-      finalRef,
-    });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("confirm-payment error:", msg);
-    return NextResponse.json({ ok: false, error: msg || "Upload failed." }, { status: 500 });
+    return NextResponse.json({ ok:true, fileId: upload.data.id, fileName: upload.data.name, finalRef });
+  } catch (e:any) {
+    return NextResponse.json({ ok:false, error: e?.message || "Upload failed." }, { status:500 });
   }
 }
 

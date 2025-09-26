@@ -7,39 +7,18 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-
     const {
-      name,
-      phone,
-      telegram,
-      matric,
-      university,
-      isNTU,
-      price,
-      paymentRef,
-      event,
-      remarks,
+      name, phone, telegram, matric, university, isNTU, price, paymentRef, remarks, event,
     } = body || {};
 
-    // Basic validation so we don’t spam the sheet with junk
-    if (
-      !name || !phone || !telegram || !matric || !university ||
-      typeof isNTU !== "boolean" || typeof price !== "number"
-    ) {
-      return NextResponse.json(
-        { ok: false, error: "Missing or invalid fields in registration payload." },
-        { status: 400 }
-      );
+    if (!name || !phone || !telegram || !matric || !university || typeof isNTU !== "boolean" || typeof price !== "number") {
+      return NextResponse.json({ ok:false, error:"Missing/invalid fields." }, { status:400 });
     }
 
-    // Optional: append a row to Google Sheets via your Apps Script (initial registration)
     const APP_URL = process.env.APPS_SCRIPT_URL;
     const APP_TOKEN = process.env.APPS_SCRIPT_TOKEN;
 
-    if (!APP_URL || !APP_TOKEN) {
-      // Not fatal; you may want to treat this as an error if Sheets is required
-      console.warn("APPS_SCRIPT_URL or APPS_SCRIPT_TOKEN not set. Skipping sheet append for registration.");
-    } else {
+    if (APP_URL && APP_TOKEN) {
       const url = new URL(APP_URL);
       url.searchParams.set("token", APP_TOKEN);
 
@@ -49,36 +28,24 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           action: "appendRegistration",
           data: {
-            name,
-            phone,
-            telegram,
-            matric,
-            university,
-            isNTU,
-            price,
-            paymentRef,
-            remarks,
-            event,
-            registeredAtISO: new Date().toISOString(),
+            name, phone, telegram, matric, university, isNTU, price, paymentRef, remarks,
+            event, registeredAtISO: new Date().toISOString(),
           },
         }),
       });
 
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        console.error("Apps Script appendRegistration failed:", res.status, txt);
-        // Not fatal to user flow, but let’s surface it
-        return NextResponse.json(
-          { ok: false, error: "Registration saved locally, but failed to append to Google Sheet." },
-          { status: 502 }
-        );
+        console.error("appendRegistration failed:", res.status, txt);
+        return NextResponse.json({ ok:false, error:"Failed to append to Google Sheet." }, { status:502 });
       }
+    } else {
+      console.warn("APPS_SCRIPT_URL/APPS_SCRIPT_TOKEN missing; skipping sheet append.");
     }
 
-    return NextResponse.json({ ok: true });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("register route error:", msg);
-    return NextResponse.json({ ok: false, error: "Register route failed." }, { status: 500 });
+    return NextResponse.json({ ok:true });
+  } catch (e:any) {
+    console.error("register route error:", e?.message || e);
+    return NextResponse.json({ ok:false, error:"Register route failed." }, { status:500 });
   }
 }
