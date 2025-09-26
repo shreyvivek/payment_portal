@@ -1,18 +1,9 @@
-// app/api/register/route.ts
 export async function POST(req: Request) {
   try {
-    const payload = await req.json();
+    // You can still read the payload if you want to log/validate locally:
+    // const payload = await req.json();
+    // (No sheet writes here — only confirm-payment will append after success.)
 
-    const url = new URL(process.env.APPS_SCRIPT_URL!); // your GAS /exec
-    url.searchParams.set("token", process.env.APPS_SCRIPT_TOKEN!); // shared secret
-
-    const r = await fetch(url.toString(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    if (!r.ok) return new Response("Upstream error", { status: 502 });
     return new Response("OK");
   } catch (e) {
     console.error("Proxy error:", e);

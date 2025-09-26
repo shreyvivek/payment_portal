@@ -8,22 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
-/**
- * NTU Dandiya Registration – Updated per spec
- * ------------------------------------------------------------
- * Changes:
- * - Removed sparkles icon block
- * - Header top-right replaced with dandiya sticks image
- * - “Tell us about you ✨” → “Personal details”
- * - Remarks label → “Any comments/queries”
- * - Telegram note: “Include @…”
- * - Hidden non-NTU signup counter display (logic retained)
- * - Show $0.00 until a university is selected
- * - Wording: Non-NTU “Early Bird” → “General”
- * - Payment page: removed “QR shown for…”, Back button is yellow
- * - Simplified CONFIG.images (ntuLogo, dandiyaSticks, paynow images)
- */
-
 // ===== CONFIG =====
 const CONFIG = {
   pricing: {
@@ -46,6 +30,13 @@ const CONFIG = {
     venue: "Nanyang Auditorium, Level 3",
     city: "NTU Singapore",
   },
+  // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+  // PLACE YOUR GOOGLE DRIVE / GOOGLE FORM "FILE UPLOAD" LINK HERE:
+  // Example: "https://forms.gle/your-form-id" OR a Drive File Request link.
+  uploads: {
+    googleDriveUploadUrl: "", // <--- PUT YOUR LINK HERE
+  },
+  // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 };
 
 // ===== Simple local counters (replace with DB if needed) =====
@@ -91,7 +82,7 @@ const universities = [
   "ESSEC",
   "Lasalle",
   "SP Jain",
-  "Others",
+  "Other University",
 ];
 
 export default function DandiyaRegistrationApp() {
@@ -109,6 +100,11 @@ export default function DandiyaRegistrationApp() {
     agree: false,
   });
 
+  // NEW: payment proof states (only used on Payment step)
+  const [paynowRefTyped, setPaynowRefTyped] = useState<string>("");
+  const [paymentProofDataUrl, setPaymentProofDataUrl] = useState<string>("");
+  const [paymentDate, setPaymentDate] = useState<Date | null>(null);
+
   const isNTU = useMemo(() => form.university.trim().toUpperCase() === "NTU", [form.university]);
   const price = useMemo(() => computePrice(isNTU, nonNtuCount), [isNTU, nonNtuCount]);
   const qrSrc = useMemo(() => pickQR(isNTU, price), [isNTU, price]);
@@ -125,13 +121,26 @@ export default function DandiyaRegistrationApp() {
     );
   }, [form]);
 
-  const paymentRef = useMemo(() => {
+  // NOTE: The original paymentRef was used on payment page; now final "Ref" shows on Done step
+  // using the custom rule. We keep this as a lightweight ID for client/server matching if needed.
+  const paymentRefRuntime = useMemo(() => {
     const initials = form.name.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase() || "NT";
     const last4 = form.phone.replace(/\D/g, "").slice(-4) || "0000";
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
     return `${initials}${last4}-${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`;
   }, [form.name, form.phone]);
+
+  // NEW: final reference shown on the Done page per your rule.
+  const finalReference = useMemo(() => {
+    const initials = form.name.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase() || "NT";
+    const last4 = form.phone.replace(/\D/g, "").slice(-4) || "0000";
+    const dt = paymentDate ?? new Date();
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, "0");
+    const d = String(dt.getDate()).padStart(2, "0");
+    return `${initials}${last4}-${y}${m}${d}`;
+  }, [form.name, form.phone, paymentDate]);
 
   const showPrice = form.university.trim().length > 0 ? price : 0; // $0.00 until uni selected
   const nonNtuTierLabel =
@@ -151,16 +160,16 @@ export default function DandiyaRegistrationApp() {
     try {
       const key = "ntu_dandiya_registrations";
       const list = JSON.parse(localStorage.getItem(key) || "[]");
-      list.push({ ...form, isNTU, price, paymentRef, ts: Date.now() });
+      list.push({ ...form, isNTU, price, paymentRef: paymentRefRuntime, ts: Date.now() });
       localStorage.setItem(key, JSON.stringify(list));
     } catch {}
 
-    // Send to your secure server route
+    // Send to your secure server route (unchanged; initial registration only)
     try {
       await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, isNTU, price, paymentRef, event: CONFIG.event }),
+        body: JSON.stringify({ ...form, isNTU, price, paymentRef: paymentRefRuntime, event: CONFIG.event }),
       });
     } catch (err) {
       console.error("Proxy error", err);
@@ -169,11 +178,75 @@ export default function DandiyaRegistrationApp() {
     setStep("pay");
   }
 
-  function handlePaidAndConfirm() {
+  function onPaymentProofFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setPaymentProofDataUrl("");
+      return;
+    }
+    // Simple 5MB limit guard
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Please upload an image smaller than 5 MB.");
+      e.target.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || "");
+      setPaymentProofDataUrl(dataUrl);
+      try {
+        // store locally as well
+        const key = "ntu_dandiya_payment_proofs";
+        const list = JSON.parse(localStorage.getItem(key) || "[]");
+        list.push({
+          name: form.name,
+          phone: form.phone,
+          university: form.university,
+          paynowRefTyped,
+          dataUrl,
+          ts: Date.now(),
+        });
+        localStorage.setItem(key, JSON.stringify(list));
+      } catch {}
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function handlePaidAndConfirm() {
+    // Must have both: screenshot + typed paynow reference
+    const typedOk = paynowRefTyped.trim().length >= 6; // loose check; PayNow refs vary by bank
+    if (!paymentProofDataUrl || !typedOk) return;
+
+    setPaymentDate(new Date());
+
+    // Optional: notify backend with proof + typed reference
+    try {
+      await fetch("/api/confirm-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name,
+          phone: form.phone,
+          university: form.university,
+          isNTU,
+          price,
+          // what the user typed from their bank app
+          paynowReferenceTyped: paynowRefTyped.trim(),
+          // screenshot image as a base64 data URL
+          paymentProofDataUrl,
+          event: CONFIG.event,
+        }),
+      });
+    } catch (err) {
+      console.error("Payment confirm proxy error", err);
+    }
+
     bumpNonNTUSignupCount(isNTU);
     setNonNtuCount(getNonNTUSignupCount());
     setStep("done");
   }
+
+  const canFinish = paymentProofDataUrl && paynowRefTyped.trim().length >= 6;
 
   return (
     <div className="min-h-screen w-full relative overflow-x-hidden text-amber-50">
@@ -304,7 +377,7 @@ export default function DandiyaRegistrationApp() {
                     id="university"
                     value={form.university}
                     onChange={(e) => setForm({ ...form, university: e.target.value })}
-                    className="mt-2 w-full rounded-xl bg-white/10 border border-white/20 px-3 py-2"
+                    className="mt-2 w-full rounded-xl bg-white text-slate-900 border border-white/20 px-3 py-2"
                   >
                     <option value="">Select…</option>
                     {universities.map((u) => (
@@ -376,33 +449,70 @@ export default function DandiyaRegistrationApp() {
                     alt="PayNow QR"
                     className="w-60 h-60 sm:w-64 sm:h-64 rounded-2xl shadow-2xl border border-amber-100/20 object-contain bg-white"
                   />
-                  {/* Removed the “QR shown for …” line */}
                 </div>
-                <div className="space-y-3">
+
+                {/* NEW: Proof upload + typed PayNow reference */}
+                <div className="space-y-4">
                   <p className="text-amber-100/90">
-                    Please scan the QR and pay <span className="font-bold">${price}.00</span>. Use the
-                    reference below so we can match your payment quickly.
+                    Please scan the QR and pay <span className="font-bold">${price}.00</span>.
+                    Then <b>upload a screenshot of your successful payment</b> and
+                    <b> type the PayNow reference number</b> from your bank app.
                   </p>
+
+                  {/* File upload */}
                   <div className="p-4 rounded-xl bg-[#3f1a12]/50 border border-amber-100/20">
-                    <div className="text-xs text-amber-200/80">Copy this into PayNow “Comments for Recipient”</div>
-                    <div className="flex items-center justify-between mt-1">
-                      <code className="text-lg font-mono text-yellow-200">{paymentRef}</code>
-                      <Button
-                        variant="secondary"
-                        className="rounded-xl"
-                        onClick={() => navigator.clipboard.writeText(paymentRef)}
-                      >
-                        Copy
-                      </Button>
+                    <Label htmlFor="paymentProof" className="text-sm">Upload payment screenshot</Label>
+                    <Input
+                      id="paymentProof"
+                      type="file"
+                      accept="image/*"
+                      className="mt-2 bg-white/10 border-white/20"
+                      onChange={onPaymentProofFile}
+                    />
+                    {paymentProofDataUrl && (
+                      <div className="mt-3">
+                        <img
+                          src={paymentProofDataUrl}
+                          alt="Payment proof preview"
+                          className="max-h-40 rounded-lg border border-amber-100/20"
+                        />
+                      </div>
+                    )}
+                    {CONFIG.uploads.googleDriveUploadUrl && (
+                      <div className="mt-2 text-xs text-amber-200/80">
+                        Prefer to upload to our Drive?{" "}
+                        <a
+                          href={CONFIG.uploads.googleDriveUploadUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline text-yellow-200 hover:text-yellow-100"
+                        >
+                          Open upload folder/form
+                        </a>
+                      </div>
+                    )}
+                    <div className="text-[11px] text-amber-200/70 mt-2">
+                      JPEG/PNG up to 5 MB.
                     </div>
                   </div>
-                  <ul className="list-disc list-inside text-sm text-amber-100/85 space-y-1">
-                    <li>Open your banking app → PayNow QR → Scan.</li>
-                    <li>Pay <b>${price}.00</b>.</li>
-                    <li>Paste the <b>Payment Reference</b> into the Comments field on PayNow.</li>
-                  </ul>
+
+                  {/* Typed PayNow ref */}
+                  <div className="p-4 rounded-xl bg-[#3f1a12]/50 border border-amber-100/20">
+                    <Label htmlFor="paynowRef" className="text-sm">PayNow reference (from your bank app)</Label>
+                    <Input
+                      id="paynowRef"
+                      value={paynowRefTyped}
+                      onChange={(e) => setPaynowRefTyped(e.target.value)}
+                      className="mt-2 bg-white/10 border-white/20"
+                      placeholder="e.g., 20251011ABC123"
+                    />
+                    <div className="text-[11px] text-amber-200/70 mt-1">
+                      Enter exactly what your bank shows as the PayNow reference / transaction ID.
+                    </div>
+                  </div>
                 </div>
               </div>
+
               <div className="flex items-center justify-end gap-3 mt-6">
                 <Button
                   className="rounded-2xl px-6 py-4 bg-yellow-400 text-red-900 hover:bg-yellow-300"
@@ -411,7 +521,12 @@ export default function DandiyaRegistrationApp() {
                   Back
                 </Button>
                 <Button
-                  className="w-full sm:w-auto px-6 py-4 text-base rounded-2xl bg-emerald-400 text-emerald-950 hover:bg-emerald-300"
+                  className={`w-full sm:w-auto px-6 py-4 text-base rounded-2xl ${
+                    canFinish
+                      ? "bg-emerald-400 text-emerald-950 hover:bg-emerald-300"
+                      : "bg-emerald-400/40 text-emerald-950/60 cursor-not-allowed"
+                  }`}
+                  disabled={!canFinish}
                   onClick={handlePaidAndConfirm}
                 >
                   I’ve Paid – Finish <Check className="ml-2 h-5 w-5" />
@@ -455,7 +570,8 @@ export default function DandiyaRegistrationApp() {
                         <b>Paid:</b> ${price}.00
                       </li>
                       <li>
-                        <b>Ref:</b> {paymentRef}
+                        {/* NEW: Show final reference per your rule */}
+                        <b>Ref:</b> {finalReference}
                       </li>
                     </ul>
                   </div>
