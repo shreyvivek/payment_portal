@@ -1,4 +1,3 @@
-// app/api/confirm-payment/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { Readable } from "stream";
@@ -22,30 +21,26 @@ export async function POST(req: NextRequest) {
     } = await req.json();
 
     if (!paymentProofDataUrl || !paynowReferenceTyped) {
-      return NextResponse.json({ ok:false, error:"Missing payment proof or typed reference." }, { status:400 });
+      return NextResponse.json({ ok: false, error: "Missing payment proof or typed reference." }, { status: 400 });
     }
 
-    // ---- Drive creds
     const SA_EMAIL = process.env.GDRIVE_CLIENT_EMAIL;
     const SA_KEY = (process.env.GDRIVE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
-    const FOLDER_ID = process.env.GDRIVE_FOLDER_ID || ""; // optional
+    const FOLDER_ID = process.env.GDRIVE_FOLDER_ID || "";
 
     if (!SA_EMAIL || !SA_KEY) {
-      return NextResponse.json({ ok:false, error:"Drive credentials missing." }, { status:500 });
+      return NextResponse.json({ ok: false, error: "Drive credentials missing." }, { status: 500 });
     }
 
-    // ---- Decode image
     const { buffer, mimeType } = b64ToBuffer(paymentProofDataUrl);
     const ext = mimeType === "image/png" ? "png" : mimeType === "image/jpeg" ? "jpg" : "png";
 
-    // ---- Drive client
     const auth = new google.auth.GoogleAuth({
       credentials: { client_email: SA_EMAIL, private_key: SA_KEY },
       scopes: ["https://www.googleapis.com/auth/drive.file"],
     });
     const drive = google.drive({ version: "v3", auth });
 
-    // ---- Filename
     const safeName = String(name || "anon").replace(/[^A-Za-z0-9 _-]/g, "").slice(0, 40);
     const last4 = String(phone || "").replace(/\D/g, "").slice(-4) || "0000";
     const now = new Date();
@@ -56,8 +51,6 @@ export async function POST(req: NextRequest) {
     const mm = String(now.getMinutes()).padStart(2, "0");
     const filename = `${safeName}-${last4}-${y}${m}${d}-${hh}${mm}.${ext}`;
 
-    // ---- Upload (stream)
-    const bodyStream = Readable.from(buffer);
     const upload = await drive.files.create({
       requestBody: {
         name: filename,
@@ -65,15 +58,13 @@ export async function POST(req: NextRequest) {
         mimeType,
         description: `Dandiya ${event?.name || ""} | ${university} | isNTU=${isNTU} | price=${price} | typedRef=${paynowReferenceTyped}`,
       },
-      media: { mimeType, body: bodyStream },
+      media: { mimeType, body: Readable.from(buffer) },
       fields: "id,name,parents",
     });
 
-    // ---- Final reference AA1234-YYYYMMDD
-    const initials = String(name || "").replace(/[^A-Za-z]/g, "").slice(0,2).toUpperCase() || "NT";
+    const initials = String(name || "").replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase() || "NT";
     const finalRef = `${initials}${last4}-${y}${m}${d}`;
 
-    // ---- Append to Sheet via Apps Script (optional)
     try {
       const APP_URL = process.env.APPS_SCRIPT_URL;
       const APP_TOKEN = process.env.APPS_SCRIPT_TOKEN;
@@ -96,10 +87,10 @@ export async function POST(req: NextRequest) {
         });
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
+          // eslint-disable-next-line no-console
           console.error("appendPaid failed:", res.status, txt);
-          // Not fatal—Drive upload succeeded
           return NextResponse.json({
-            ok:true,
+            ok: true,
             fileId: upload.data.id,
             fileName: upload.data.name,
             finalRef,
@@ -107,15 +98,19 @@ export async function POST(req: NextRequest) {
           });
         }
       } else {
+        // eslint-disable-next-line no-console
         console.warn("APPS_SCRIPT_URL/APPS_SCRIPT_TOKEN missing; skipping paid append.");
       }
-    } catch (e) {
-      console.error("Apps Script appendPaid error:", e);
+    } catch (innerErr: unknown) {
+      const msg = innerErr instanceof Error ? innerErr.message : String(innerErr);
+      // eslint-disable-next-line no-console
+      console.error("Apps Script appendPaid error:", msg);
     }
 
-    return NextResponse.json({ ok:true, fileId: upload.data.id, fileName: upload.data.name, finalRef });
-  } catch (e:any) {
-    return NextResponse.json({ ok:false, error: e?.message || "Upload failed." }, { status:500 });
+    return NextResponse.json({ ok: true, fileId: upload.data.id, fileName: upload.data.name, finalRef });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ ok: false, error: msg || "Upload failed." }, { status: 500 });
   }
 }
 
