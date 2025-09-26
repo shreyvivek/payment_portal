@@ -1,6 +1,5 @@
-export async function POST(req: Request) {
+export async function POST(_req: Request) {
   try {
-    // const payload = await req.json(); // if you want to inspect/validate
     return new Response("OK");
   } catch (e) {
     console.error("register route error:", e);

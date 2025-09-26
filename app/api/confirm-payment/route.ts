@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     const ext =
       mimeType === "image/png" ? "png" :
       mimeType === "image/jpeg" ? "jpg" :
-      "png"; // default
+      "png";
 
     // Auth: Google Drive (service account)
     const auth = new google.auth.GoogleAuth({
@@ -69,12 +69,11 @@ export async function POST(req: NextRequest) {
       fields: "id,name,parents",
     });
 
-    // Build final reference (AA1234-YYYYMMDD) for logging/deduping
-    const initials =
-      String(name || "").replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase() || "NT";
+    // Build final reference (AA1234-YYYYMMDD)
+    const initials = String(name || "").replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase() || "NT";
     const finalRef = `${initials}${last4}-${y}${m}${d}`;
 
-    // Append ONE row to your Google Sheet via Apps Script (optional but recommended)
+    // Optional: append ONE row to Google Sheet via Apps Script
     try {
       if (process.env.APPS_SCRIPT_URL && process.env.APPS_SCRIPT_TOKEN) {
         const url = new URL(process.env.APPS_SCRIPT_URL);
@@ -85,7 +84,7 @@ export async function POST(req: NextRequest) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "appendPaid",
-            dedupeKey: finalRef, // have Apps Script ignore if exists
+            dedupeKey: finalRef,
             data: {
               name,
               phone,
@@ -102,8 +101,8 @@ export async function POST(req: NextRequest) {
         });
       }
     } catch (e) {
-      // Non-fatal: Drive upload succeeded; sheet write can fail without blocking user
       console.error("Apps Script append failed:", e);
+      // non-fatal
     }
 
     return NextResponse.json({
@@ -112,8 +111,9 @@ export async function POST(req: NextRequest) {
       fileName: upload.data.name,
       finalRef,
     });
-  } catch (err: any) {
-    console.error("confirm-payment error:", err?.message || err);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("confirm-payment error:", msg);
     return NextResponse.json({ ok: false, error: "Upload failed" }, { status: 500 });
   }
 }
