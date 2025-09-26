@@ -35,20 +35,18 @@ export async function POST(req: NextRequest) {
 
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
-        // eslint-disable-next-line no-console
         console.error("appendRegistration failed:", res.status, txt);
         return NextResponse.json({ ok: false, error: "Failed to append to Google Sheet." }, { status: 502 });
       }
     } else {
-      // eslint-disable-next-line no-console
       console.warn("APPS_SCRIPT_URL/APPS_SCRIPT_TOKEN missing; skipping sheet append.");
     }
 
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    // eslint-disable-next-line no-console
     console.error("register route error:", msg);
     return NextResponse.json({ ok: false, error: "Register route failed." }, { status: 500 });
   }
 }
+
