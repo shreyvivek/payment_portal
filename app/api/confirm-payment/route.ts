@@ -9,6 +9,8 @@ function b64ToBuffer(dataUrl: string) {
   return { buffer: Buffer.from(b64, "base64"), mimeType };
 }
 
+export const runtime = "nodejs"; // ensure Node (Buffer + googleapis)
+
 export async function POST(req: NextRequest) {
   try {
     const {
@@ -26,9 +28,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Missing proof/ref" }, { status: 400 });
     }
 
+    // Decode image
     const { buffer, mimeType } = b64ToBuffer(paymentProofDataUrl);
+    const ext =
+      mimeType === "image/png" ? "png" :
+      mimeType === "image/jpeg" ? "jpg" :
+      "png"; // default
 
-    // Auth with service account (kept in server-only env)
+    // Auth: Google Drive (service account)
     const auth = new google.auth.GoogleAuth({
       credentials: {
         client_email: process.env.GDRIVE_CLIENT_EMAIL,
@@ -38,7 +45,7 @@ export async function POST(req: NextRequest) {
     });
     const drive = google.drive({ version: "v3", auth });
 
-    // Build a neat filename
+    // Filename
     const safeName = String(name || "anon").replace(/[^A-Za-z0-9 _-]/g, "").slice(0, 40);
     const last4 = String(phone || "").replace(/\D/g, "").slice(-4) || "0000";
     const now = new Date();
@@ -47,9 +54,10 @@ export async function POST(req: NextRequest) {
     const d = String(now.getDate()).padStart(2, "0");
     const hh = String(now.getHours()).padStart(2, "0");
     const mm = String(now.getMinutes()).padStart(2, "0");
-    const filename = `${safeName}-${last4}-${y}${m}${d}-${hh}${mm}.png`;
+    const filename = `${safeName}-${last4}-${y}${m}${d}-${hh}${mm}.${ext}`;
 
-    const folderId = process.env.GDRIVE_FOLDER_ID; // keep private
+    // Upload to Drive
+    const folderId = process.env.GDRIVE_FOLDER_ID;
     const upload = await drive.files.create({
       requestBody: {
         name: filename,
@@ -61,18 +69,15 @@ export async function POST(req: NextRequest) {
       fields: "id,name,parents",
     });
 
-    // ---- NEW: append ONE row to your sheet (only on success) with dedupe ----
-    try {
-      // Build the same final reference the client shows
-      const initials =
-        String(name || "").replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase() || "NT";
-      const finalLast4 = last4; // already computed
-      const finalRef = `${initials}${finalLast4}-${y}${m}${d}`;
+    // Build final reference (AA1234-YYYYMMDD) for logging/deduping
+    const initials =
+      String(name || "").replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase() || "NT";
+    const finalRef = `${initials}${last4}-${y}${m}${d}`;
 
-      // Post to your Apps Script Web App
+    // Append ONE row to your Google Sheet via Apps Script (optional but recommended)
+    try {
       if (process.env.APPS_SCRIPT_URL && process.env.APPS_SCRIPT_TOKEN) {
         const url = new URL(process.env.APPS_SCRIPT_URL);
-        // keep your existing token style (as query param)
         url.searchParams.set("token", process.env.APPS_SCRIPT_TOKEN);
 
         await fetch(url.toString(), {
@@ -80,7 +85,7 @@ export async function POST(req: NextRequest) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "appendPaid",
-            dedupeKey: finalRef, // let GAS ignore if already present
+            dedupeKey: finalRef, // have Apps Script ignore if exists
             data: {
               name,
               phone,
@@ -96,18 +101,20 @@ export async function POST(req: NextRequest) {
           }),
         });
       }
-    } catch (ee) {
-      console.error("sheet append failed (non-fatal):", ee);
-      // do not fail the upload if sheet write fails
+    } catch (e) {
+      // Non-fatal: Drive upload succeeded; sheet write can fail without blocking user
+      console.error("Apps Script append failed:", e);
     }
-    // ------------------------------------------------------------------------
 
-    return NextResponse.json({ ok: true, fileId: upload.data.id, fileName: upload.data.name });
-  } catch (err) {
-    console.error("confirm-payment error:", err);
+    return NextResponse.json({
+      ok: true,
+      fileId: upload.data.id,
+      fileName: upload.data.name,
+      finalRef,
+    });
+  } catch (err: any) {
+    console.error("confirm-payment error:", err?.message || err);
     return NextResponse.json({ ok: false, error: "Upload failed" }, { status: 500 });
   }
 }
 
-// Force Node runtime (not Edge) so Buffer works reliably
-export const runtime = "nodejs";
