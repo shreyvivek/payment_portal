@@ -7,10 +7,17 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const {
-      name, phone, telegram, matric, university, isNTU, price, paymentRef, remarks, event,
+      name, phone, telegram, matric, university,
+      isNTU, price, remarks, event,
+      paynowReferenceTyped, finalRef, registeredAtISO,
     } = body || {};
 
-    if (!name || !phone || !telegram || !matric || !university || typeof isNTU !== "boolean" || typeof price !== "number") {
+    // Require the PayNow reference here (so it only saves after payment)
+    if (
+      !name || !phone || !telegram || !matric || !university ||
+      typeof isNTU !== "boolean" || typeof price !== "number" ||
+      !paynowReferenceTyped || !finalRef
+    ) {
       return NextResponse.json({ ok: false, error: "Missing/invalid fields." }, { status: 400 });
     }
 
@@ -27,8 +34,12 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           action: "appendRegistration",
           data: {
-            name, phone, telegram, matric, university, isNTU, price, paymentRef, remarks,
-            event, registeredAtISO: new Date().toISOString(),
+            registeredAtISO: registeredAtISO || new Date().toISOString(),
+            name, phone, telegram, matric, university,
+            isNTU, price,
+            // store the PayNow ref + our finalRef
+            paynowReferenceTyped, finalRef,
+            remarks, event,
           },
         }),
       });
@@ -49,4 +60,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Register route failed." }, { status: 500 });
   }
 }
-

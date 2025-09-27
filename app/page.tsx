@@ -30,13 +30,10 @@ const CONFIG = {
     venue: "Nanyang Auditorium, Level 3",
     city: "NTU Singapore",
   },
-  // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-  // PLACE YOUR GOOGLE DRIVE / GOOGLE FORM "FILE UPLOAD" LINK HERE:
-  // Example: "https://forms.gle/your-form-id" OR a Drive File Request link.
+  // (unused now) Optional file upload link if you ever re-enable uploads
   uploads: {
-    googleDriveUploadUrl: "", // <--- PUT YOUR LINK HERE
+    googleDriveUploadUrl: "",
   },
-  // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 };
 
 // ===== Simple local counters (replace with DB if needed) =====
@@ -100,9 +97,8 @@ export default function DandiyaRegistrationApp() {
     agree: false,
   });
 
-  // NEW: payment proof states (only used on Payment step)
+  // NEW: payment reference only (no image upload)
   const [paynowRefTyped, setPaynowRefTyped] = useState<string>("");
-  const [paymentProofDataUrl, setPaymentProofDataUrl] = useState<string>("");
   const [paymentDate, setPaymentDate] = useState<Date | null>(null);
 
   const isNTU = useMemo(() => form.university.trim().toUpperCase() === "NTU", [form.university]);
@@ -121,8 +117,7 @@ export default function DandiyaRegistrationApp() {
     );
   }, [form]);
 
-  // NOTE: The original paymentRef was used on payment page; now final "Ref" shows on Done step
-  // using the custom rule. We keep this as a lightweight ID for client/server matching if needed.
+  // lightweight runtime ID (unused for submission now, but kept if you need local matching)
   const paymentRefRuntime = useMemo(() => {
     const initials = form.name.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase() || "NT";
     const last4 = form.phone.replace(/\D/g, "").slice(-4) || "0000";
@@ -131,7 +126,7 @@ export default function DandiyaRegistrationApp() {
     return `${initials}${last4}-${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`;
   }, [form.name, form.phone]);
 
-  // NEW: final reference shown on the Done page per your rule.
+  // final reference shown on Done page
   const finalReference = useMemo(() => {
     const initials = form.name.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase() || "NT";
     const last4 = form.phone.replace(/\D/g, "").slice(-4) || "0000";
@@ -152,93 +147,59 @@ export default function DandiyaRegistrationApp() {
           ? "Non-NTU General"
           : "Non-NTU Early Bird";
 
+  // Submit personal details -> move to Payment (no server call yet)
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!valid) return;
 
-    // Save a local copy (optional, for your own backup)
+    // Optional local draft
     try {
-      const key = "ntu_dandiya_registrations";
+      const key = "ntu_dandiya_registrations_draft";
       const list = JSON.parse(localStorage.getItem(key) || "[]");
-      list.push({ ...form, isNTU, price, paymentRef: paymentRefRuntime, ts: Date.now() });
+      list.push({ ...form, isNTU, price, ts: Date.now() });
       localStorage.setItem(key, JSON.stringify(list));
     } catch {}
-
-    // Send to your secure server route (unchanged; initial registration only)
-    try {
-      await fetch("/api/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, isNTU, price, paymentRef: paymentRefRuntime, event: CONFIG.event }),
-      });
-    } catch (err) {
-      console.error("Proxy error", err);
-    }
 
     setStep("pay");
   }
 
-  function onPaymentProofFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) {
-      setPaymentProofDataUrl("");
-      return;
-    }
-    // Simple 5MB limit guard
-    if (file.size > 5 * 1024 * 1024) {
-      alert("Please upload an image smaller than 5 MB.");
-      e.target.value = "";
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = String(reader.result || "");
-      setPaymentProofDataUrl(dataUrl);
-      try {
-        // store locally as well
-        const key = "ntu_dandiya_payment_proofs";
-        const list = JSON.parse(localStorage.getItem(key) || "[]");
-        list.push({
-          name: form.name,
-          phone: form.phone,
-          university: form.university,
-          paynowRefTyped,
-          dataUrl,
-          ts: Date.now(),
-        });
-        localStorage.setItem(key, JSON.stringify(list));
-      } catch {}
-    };
-    reader.readAsDataURL(file);
-  }
-
+  // Finish: require PayNow reference and save once
   async function handlePaidAndConfirm() {
-    // Must have both: screenshot + typed paynow reference
-    const typedOk = paynowRefTyped.trim().length >= 6; // loose check; PayNow refs vary by bank
-    if (!paymentProofDataUrl || !typedOk) return;
+    const typedOk = paynowRefTyped.trim().length >= 6;
+    if (!typedOk) return;
 
-    setPaymentDate(new Date());
+    const now = new Date();
+    setPaymentDate(now);
 
-    // Optional: notify backend with proof + typed reference
     try {
-      await fetch("/api/confirm-payment", {
+      const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: form.name,
-          phone: form.phone,
-          university: form.university,
+          ...form,
           isNTU,
           price,
-          // what the user typed from their bank app
-          paynowReferenceTyped: paynowRefTyped.trim(),
-          // screenshot image as a base64 data URL
-          paymentProofDataUrl,
           event: CONFIG.event,
+          paynowReferenceTyped: paynowRefTyped.trim(),
+          finalRef: (() => {
+            const initials = form.name.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase() || "NT";
+            const last4 = form.phone.replace(/\D/g, "").slice(-4) || "0000";
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, "0");
+            const d = String(now.getDate()).padStart(2, "0");
+            return `${initials}${last4}-${y}${m}${d}`;
+          })(),
+          registeredAtISO: now.toISOString(),
         }),
       });
+
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.ok) {
+        alert("Could not save your payment. Please try again.");
+        return;
+      }
     } catch (err) {
-      console.error("Payment confirm proxy error", err);
+      console.error("Register (final) error", err);
     }
 
     bumpNonNTUSignupCount(isNTU);
@@ -246,7 +207,7 @@ export default function DandiyaRegistrationApp() {
     setStep("done");
   }
 
-  const canFinish = paymentProofDataUrl && paynowRefTyped.trim().length >= 6;
+  const canFinish = paynowRefTyped.trim().length >= 6;
 
   return (
     <div className="min-h-screen w-full relative overflow-x-hidden text-amber-50">
@@ -411,7 +372,6 @@ export default function DandiyaRegistrationApp() {
                 </div>
 
                 <div className="sm:col-span-2 flex items-center justify-between mt-2">
-                  {/* Hidden non-NTU signup counter display (logic still works in background) */}
                   <div className="text-amber-200/90 text-xs sm:text-sm" />
                   <div className="text-right">
                     <div className="text-amber-200/90 text-xs">Your ticket</div>
@@ -451,52 +411,13 @@ export default function DandiyaRegistrationApp() {
                   />
                 </div>
 
-                {/* NEW: Proof upload + typed PayNow reference */}
                 <div className="space-y-4">
                   <p className="text-amber-100/90">
                     Please scan the QR and pay <span className="font-bold">${price}.00</span>.
-                    Then <b>upload a screenshot of your successful payment</b> and
-                    <b> type the PayNow reference number</b> from your bank app.
+                    Then <b>type the PayNow reference number</b> exactly as shown in your bank app.
                   </p>
 
-                  {/* File upload */}
-                  <div className="p-4 rounded-xl bg-[#3f1a12]/50 border border-amber-100/20">
-                    <Label htmlFor="paymentProof" className="text-sm">Upload payment screenshot</Label>
-                    <Input
-                      id="paymentProof"
-                      type="file"
-                      accept="image/*"
-                      className="mt-2 bg-white/10 border-white/20"
-                      onChange={onPaymentProofFile}
-                    />
-                    {paymentProofDataUrl && (
-                      <div className="mt-3">
-                        <img
-                          src={paymentProofDataUrl}
-                          alt="Payment proof preview"
-                          className="max-h-40 rounded-lg border border-amber-100/20"
-                        />
-                      </div>
-                    )}
-                    {CONFIG.uploads.googleDriveUploadUrl && (
-                      <div className="mt-2 text-xs text-amber-200/80">
-                        Prefer to upload to our Drive?{" "}
-                        <a
-                          href={CONFIG.uploads.googleDriveUploadUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="underline text-yellow-200 hover:text-yellow-100"
-                        >
-                          Open upload folder/form
-                        </a>
-                      </div>
-                    )}
-                    <div className="text-[11px] text-amber-200/70 mt-2">
-                      JPEG/PNG up to 5 MB.
-                    </div>
-                  </div>
-
-                  {/* Typed PayNow ref */}
+                  {/* Typed PayNow ref only */}
                   <div className="p-4 rounded-xl bg-[#3f1a12]/50 border border-amber-100/20">
                     <Label htmlFor="paynowRef" className="text-sm">PayNow reference (from your bank app)</Label>
                     <Input
@@ -548,6 +469,9 @@ export default function DandiyaRegistrationApp() {
                   <p className="text-amber-100/90 mt-2 text-sm">
                     We’ve received your registration. You’ll get a confirmation message to join the Telegram channel after we verify your payment.
                   </p>
+                  <p className="text-amber-100 mt-3 text-sm font-bold">
+                    Bring a payment proof screenshot on entry (mandatory).
+                  </p>
                   <div className="mt-4 p-4 rounded-xl bg-[#3f1a12]/50 border border-amber-100/20 text-sm">
                     <div className="text-amber-200/80">Your Details</div>
                     <ul className="mt-2 space-y-1">
@@ -570,7 +494,6 @@ export default function DandiyaRegistrationApp() {
                         <b>Paid:</b> ${price}.00
                       </li>
                       <li>
-                        {/* NEW: Show final reference per your rule */}
                         <b>Ref:</b> {finalReference}
                       </li>
                     </ul>
@@ -588,8 +511,7 @@ export default function DandiyaRegistrationApp() {
                     <li>
                       🕕 <b>{CONFIG.event.timeStr}</b> (doors open 5:30 PM)
                     </li>
-                    <li>Bring student ID and payment proof screenshot.</li>
-                    <li>Dress code: colorful ethnic or smart casual (comfortable for dancing!)</li>
+                    <li><b>Dress code: Ethnic Wear only.</b></li>
                   </ul>
                   <div className="mt-4 text-xs text-amber-200/80">
                     Need help? DM <span className="font-medium">@rakshita_bubna</span>, <span className="font-medium">@madhavvth</span> or <span className="font-medium">@shreyvivek</span> on Telegram or <span className="font-medium">@indsoc_ntu</span> on Instagram.
