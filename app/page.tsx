@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState, useEffect } from "react";
-import { Check, CreditCard, Calendar, MapPin, Phone, AtSign, University } from "lucide-react";
+import { Check, CreditCard, Calendar, MapPin, Phone, AtSign, University, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -29,10 +29,6 @@ const CONFIG = {
     timeStr: "6:00 PM – 10:00 PM",
     venue: "Nanyang Auditorium, Level 3",
     city: "NTU Singapore",
-  },
-  // (unused now) Optional file upload link if you ever re-enable uploads
-  uploads: {
-    googleDriveUploadUrl: "",
   },
 };
 
@@ -97,10 +93,9 @@ export default function DandiyaRegistrationApp() {
     agree: false,
   });
 
-  // NEW: payment reference only (no image upload)
-  const [paynowRefTyped, setPaynowRefTyped] = useState<string>("");
-  const [paymentDate, setPaymentDate] = useState<Date | null>(null);
+  // NEW: proof upload + loading state
   const [proofBase64, setProofBase64] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
 
   const isNTU = useMemo(() => form.university.trim().toUpperCase() === "NTU", [form.university]);
   const price = useMemo(() => computePrice(isNTU, nonNtuCount), [isNTU, nonNtuCount]);
@@ -118,25 +113,12 @@ export default function DandiyaRegistrationApp() {
     );
   }, [form]);
 
-  // lightweight runtime ID (unused for submission now, but kept if you need local matching)
-  const paymentRefRuntime = useMemo(() => {
-    const initials = form.name.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase() || "NT";
-    const last4 = form.phone.replace(/\D/g, "").slice(-4) || "0000";
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${initials}${last4}-${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`;
-  }, [form.name, form.phone]);
-
-  // final reference shown on Done page
+  // Reference number = NAME(without spaces, uppercased) + PHONE (digits as given)
   const finalReference = useMemo(() => {
-    const initials = form.name.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase() || "NT";
-    const last4 = form.phone.replace(/\D/g, "").slice(-4) || "0000";
-    const dt = paymentDate ?? new Date();
-    const y = dt.getFullYear();
-    const m = String(dt.getMonth() + 1).padStart(2, "0");
-    const d = String(dt.getDate()).padStart(2, "0");
-    return `${initials}${last4}-${y}${m}${d}`;
-  }, [form.name, form.phone, paymentDate]);
+    const safeName = form.name.replace(/\s+/g, "").toUpperCase() || "NT";
+    const phone = form.phone.replace(/\D/g, "");
+    return `${safeName}${phone}`;
+  }, [form.name, form.phone]);
 
   const showPrice = form.university.trim().length > 0 ? price : 0; // $0.00 until uni selected
   const nonNtuTierLabel =
@@ -148,7 +130,7 @@ export default function DandiyaRegistrationApp() {
           ? "Non-NTU General"
           : "Non-NTU Early Bird";
 
-  // Submit personal details -> move to Payment (no server call yet)
+  // Submit personal details -> move to Payment
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!valid) return;
@@ -164,13 +146,12 @@ export default function DandiyaRegistrationApp() {
     setStep("pay");
   }
 
-  // Finish: require PayNow reference and save once
+  // Finish: require proof upload
   async function handlePaidAndConfirm() {
-    const typedOk = paynowRefTyped.trim().length >= 6;
-    if (!typedOk) return;
+    if (!proofBase64 || loading) return;
 
+    setLoading(true);
     const now = new Date();
-    setPaymentDate(now);
 
     try {
       const res = await fetch("/api/register", {
@@ -181,35 +162,32 @@ export default function DandiyaRegistrationApp() {
           isNTU,
           price,
           event: CONFIG.event,
-          paynowReferenceTyped: paynowRefTyped.trim(),
-          finalRef: (() => {
-            const initials = form.name.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase() || "NT";
-            const last4 = form.phone.replace(/\D/g, "").slice(-4) || "0000";
-            const y = now.getFullYear();
-            const m = String(now.getMonth() + 1).padStart(2, "0");
-            const d = String(now.getDate()).padStart(2, "0");
-            return `${initials}${last4}-${y}${m}${d}`;
-          })(),
-          registeredAtISO: now.toISOString(),
-          proofBase64,
+          finalRef: finalReference,           // NAME+PHONE
+          registeredAtISO: now.toISOString(), // Apps Script will format to SGT
+          proofBase64,                        // screenshot
         }),
       });
 
       const j = await res.json().catch(() => ({}));
       if (!res.ok || !j.ok) {
         alert("Could not save your payment. Please try again.");
+        setLoading(false);
         return;
       }
     } catch (err) {
       console.error("Register (final) error", err);
+      setLoading(false);
+      return;
     }
 
     bumpNonNTUSignupCount(isNTU);
     setNonNtuCount(getNonNTUSignupCount());
+    setLoading(false);
     setStep("done");
   }
 
-  const canFinish = paynowRefTyped.trim().length >= 6;
+  // Can finish only after proof uploaded, and not during loading
+  const canFinish = !!proofBase64 && !loading;
 
   return (
     <div className="min-h-screen w-full relative overflow-x-hidden text-amber-50">
@@ -416,25 +394,11 @@ export default function DandiyaRegistrationApp() {
                 <div className="space-y-4">
                   <p className="text-amber-100/90">
                     Please scan the QR and pay <span className="font-bold">${price}.00</span>.
-                    Then <b>type the PayNow reference number</b> exactly as shown in your bank app.
+                    Then <b>upload your payment proof screenshot</b>.
                   </p>
 
-                  {/* Typed PayNow ref only */}
+                  {/* Proof upload */}
                   <div className="p-4 rounded-xl bg-[#3f1a12]/50 border border-amber-100/20">
-                    <Label htmlFor="paynowRef" className="text-sm">PayNow reference (from your bank app)</Label>
-                    <Input
-                      id="paynowRef"
-                      value={paynowRefTyped}
-                      onChange={(e) => setPaynowRefTyped(e.target.value)}
-                      className="mt-2 bg-white/10 border-white/20"
-                      placeholder="e.g., 20251011ABC123"
-                    />
-                    <div className="text-[11px] text-amber-200/70 mt-1">
-                      Enter exactly what your bank shows as the PayNow reference / transaction ID.
-                    </div>
-                  </div>
-
-                  <div className="p-4 rounded-xl bg-[#3f1a12]/50 border border-amber-100/20 mt-4">
                     <Label htmlFor="proofFile" className="text-sm">Upload Payment Proof Screenshot</Label>
                     <Input
                       id="proofFile"
@@ -454,7 +418,7 @@ export default function DandiyaRegistrationApp() {
                       className="mt-2 bg-white/10 border-white/20"
                     />
                     <div className="text-[11px] text-amber-200/70 mt-1">
-                      Upload screenshot of your PayNow transaction.
+                      JPG/PNG recommended. Max ~5–8MB (browser limits may apply).
                     </div>
                   </div>
                 </div>
@@ -464,20 +428,40 @@ export default function DandiyaRegistrationApp() {
                 <Button
                   className="rounded-2xl px-6 py-4 bg-yellow-400 text-red-900 hover:bg-yellow-300"
                   onClick={() => setStep("form")}
+                  disabled={loading}
                 >
                   Back
                 </Button>
-                <Button
-                  className={`w-full sm:w-auto px-6 py-4 text-base rounded-2xl ${
-                    canFinish
-                      ? "bg-emerald-400 text-emerald-950 hover:bg-emerald-300"
-                      : "bg-emerald-400/40 text-emerald-950/60 cursor-not-allowed"
-                  }`}
-                  disabled={!canFinish}
-                  onClick={handlePaidAndConfirm}
-                >
-                  I’ve Paid – Finish <Check className="ml-2 h-5 w-5" />
-                </Button>
+
+                <div className="flex items-center gap-3">
+                  <Button
+                    className={`px-6 py-4 text-base rounded-2xl ${
+                      canFinish
+                        ? "bg-emerald-400 text-emerald-950 hover:bg-emerald-300"
+                        : "bg-emerald-400/40 text-emerald-950/60 cursor-not-allowed"
+                    }`}
+                    disabled={!canFinish}
+                    onClick={handlePaidAndConfirm}
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        Processing…
+                      </>
+                    ) : (
+                      <>
+                        I’ve Paid – Finish <Check className="ml-2 h-5 w-5" />
+                      </>
+                    )}
+                  </Button>
+
+                  {/* Slim loading bar shown only while saving */}
+                  {loading && (
+                    <div className="w-28 h-2 rounded-full bg-white/20 overflow-hidden">
+                      <div className="h-full w-1/2 bg-white/70 animate-[loading_1.2s_linear_infinite]" />
+                    </div>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -501,46 +485,29 @@ export default function DandiyaRegistrationApp() {
                   <div className="mt-4 p-4 rounded-xl bg-[#3f1a12]/50 border border-amber-100/20 text-sm">
                     <div className="text-amber-200/80">Your Details</div>
                     <ul className="mt-2 space-y-1">
-                      <li>
-                        <b>Name:</b> {form.name}
-                      </li>
-                      <li>
-                        <b>University:</b> {form.university}
-                      </li>
-                      <li>
-                        <b>Telegram:</b> {form.telegram}
-                      </li>
-                      <li>
-                        <b>Phone:</b> {form.phone}
-                      </li>
-                      <li>
-                        <b>Matric:</b> {form.matric}
-                      </li>
-                      <li>
-                        <b>Paid:</b> ${price}.00
-                      </li>
-                      <li>
-                        <b>Ref:</b> {finalReference}
-                      </li>
+                      <li><b>Name:</b> {form.name}</li>
+                      <li><b>University:</b> {form.university}</li>
+                      <li><b>Telegram:</b> {form.telegram}</li>
+                      <li><b>Phone:</b> {form.phone}</li>
+                      <li><b>Matric:</b> {form.matric}</li>
+                      <li><b>Paid:</b> ${price}.00</li>
+                      <li><b>Ref:</b> {finalReference}</li>
                     </ul>
                   </div>
                 </div>
                 <div>
                   <h3 className="font-semibold">Event Instructions</h3>
                   <ul className="text-sm text-amber-100/90 mt-2 space-y-2 list-disc list-inside">
-                    <li>
-                      📍 <b>{CONFIG.event.venue}</b>, {CONFIG.event.city}
-                    </li>
-                    <li>
-                      🗓️ <b>{CONFIG.event.dateStr}</b>
-                    </li>
-                    <li>
-                      🕕 <b>{CONFIG.event.timeStr}</b> (doors open 5:30 PM)
-                    </li>
+                    <li>📍 <b>{CONFIG.event.venue}</b>, {CONFIG.event.city}</li>
+                    <li>🗓️ <b>{CONFIG.event.dateStr}</b></li>
+                    <li>🕕 <b>{CONFIG.event.timeStr}</b> (doors open 5:30 PM)</li>
                     <li><b>Dress code: Ethnic Wear only.</b></li>
                   </ul>
                   <div className="mt-4 text-xs text-amber-200/80">
-                    Need help? DM <span className="font-medium">@rakshita_bubna</span>, <span className="font-medium">@madhavvth</span> or <span className="font-medium">@shreyvivek</span> on Telegram or <span className="font-medium">@indsoc_ntu</span> on Instagram.
+                    Need help? DM <span className="font-medium">@rakshita_bubna</span>,{" "}
+                    <span className="font-medium">@madhavvth</span> or{" "}
+                    <span className="font-medium">@shreyvivek</span> on Telegram or{" "}
+                    <span className="font-medium">@indsoc_ntu</span> on Instagram.
                   </div>
                 </div>
               </div>
@@ -553,6 +520,17 @@ export default function DandiyaRegistrationApp() {
         <div> {new Date().getFullYear()} NTU Indian Society · NTU Indian Dance</div>
         <div>Built with ❤️ for the dandiya season</div>
       </footer>
+
+      {/* simple keyframes for the loading bar */}
+      <style jsx global>{`
+        @keyframes loading {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(200%); }
+        }
+        .animate-[loading_1.2s_linear_infinite] {
+          animation: loading 1.2s linear infinite;
+        }
+      `}</style>
     </div>
   );
 }

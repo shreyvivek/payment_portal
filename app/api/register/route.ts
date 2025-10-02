@@ -26,14 +26,14 @@ export async function POST(req: NextRequest) {
     const {
       name, phone, telegram, matric, university,
       isNTU, price, remarks, event,
-      paynowReferenceTyped, finalRef, registeredAtISO,
-      proofBase64, // 👈 new
+      finalRef, registeredAtISO,
+      proofBase64,
     } = body || {};
 
     if (
       !name || !phone || !telegram || !matric || !university ||
       typeof isNTU !== "boolean" || typeof price !== "number" ||
-      !paynowReferenceTyped || !finalRef
+      !finalRef || !proofBase64
     ) {
       return NextResponse.json({ ok: false, error: "Missing/invalid fields." }, { status: 400 });
     }
@@ -48,10 +48,7 @@ export async function POST(req: NextRequest) {
     const safeName = (name || "").replace(/\s+/g, "").toUpperCase();
     const refFileName = `${safeName}${phone}`;
 
-    let proofUrl = "";
-    if (proofBase64) {
-      proofUrl = await uploadProofToDrive(APP_URL, APP_TOKEN, proofBase64, refFileName);
-    }
+    const proofUrl = await uploadProofToDrive(APP_URL, APP_TOKEN, proofBase64, refFileName);
 
     const url = new URL(APP_URL);
     url.searchParams.set("token", APP_TOKEN);
@@ -65,11 +62,10 @@ export async function POST(req: NextRequest) {
           registeredAtISO: registeredAtISO || new Date().toISOString(),
           name, phone, telegram, matric, university,
           isNTU, price,
-          paynowReferenceTyped,
           finalRef,
           remarks,
           event,
-          proofUrl, // 👈 new
+          proofUrl,
         },
       }),
     });
@@ -87,5 +83,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Register route failed." }, { status: 500 });
   }
 }
-
-
