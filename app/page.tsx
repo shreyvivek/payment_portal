@@ -100,6 +100,7 @@ export default function DandiyaRegistrationApp() {
   // NEW: payment reference only (no image upload)
   const [paynowRefTyped, setPaynowRefTyped] = useState<string>("");
   const [paymentDate, setPaymentDate] = useState<Date | null>(null);
+  const [proofBase64, setProofBase64] = useState<string | null>(null);
 
   const isNTU = useMemo(() => form.university.trim().toUpperCase() === "NTU", [form.university]);
   const price = useMemo(() => computePrice(isNTU, nonNtuCount), [isNTU, nonNtuCount]);
@@ -190,6 +191,7 @@ export default function DandiyaRegistrationApp() {
             return `${initials}${last4}-${y}${m}${d}`;
           })(),
           registeredAtISO: now.toISOString(),
+          proofBase64,
         }),
       });
 
@@ -429,6 +431,30 @@ export default function DandiyaRegistrationApp() {
                     />
                     <div className="text-[11px] text-amber-200/70 mt-1">
                       Enter exactly what your bank shows as the PayNow reference / transaction ID.
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-[#3f1a12]/50 border border-amber-100/20 mt-4">
+                    <Label htmlFor="proofFile" className="text-sm">Upload Payment Proof Screenshot</Label>
+                    <Input
+                      id="proofFile"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            const base64 = (reader.result as string).split(",")[1]; // remove data: prefix
+                            setProofBase64(base64);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                      className="mt-2 bg-white/10 border-white/20"
+                    />
+                    <div className="text-[11px] text-amber-200/70 mt-1">
+                      Upload screenshot of your PayNow transaction.
                     </div>
                   </div>
                 </div>

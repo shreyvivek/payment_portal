@@ -3,6 +3,23 @@ import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+async function uploadProofToDrive(appUrl: string, token: string, base64: string, filename: string) {
+  const url = new URL(appUrl);
+  url.searchParams.set("token", token);
+
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "saveProof",
+      data: { base64, filename }
+    }),
+  });
+
+  const j = await res.json().catch(() => ({}));
+  return j.url || "";
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
@@ -10,9 +27,9 @@ export async function POST(req: NextRequest) {
       name, phone, telegram, matric, university,
       isNTU, price, remarks, event,
       paynowReferenceTyped, finalRef, registeredAtISO,
+      proofBase64, // 👈 new
     } = body || {};
 
-    // Only save after payment: require the PayNow reference + finalRef
     if (
       !name || !phone || !telegram || !matric || !university ||
       typeof isNTU !== "boolean" || typeof price !== "number" ||
@@ -27,6 +44,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Apps Script URL/token not set." }, { status: 500 });
     }
 
+    // filename = NAME(without spaces) + PHONE
+    const safeName = (name || "").replace(/\s+/g, "").toUpperCase();
+    const refFileName = `${safeName}${phone}`;
+
+    let proofUrl = "";
+    if (proofBase64) {
+      proofUrl = await uploadProofToDrive(APP_URL, APP_TOKEN, proofBase64, refFileName);
+    }
+
     const url = new URL(APP_URL);
     url.searchParams.set("token", APP_TOKEN);
 
@@ -39,17 +65,17 @@ export async function POST(req: NextRequest) {
           registeredAtISO: registeredAtISO || new Date().toISOString(),
           name, phone, telegram, matric, university,
           isNTU, price,
-          paynowReferenceTyped, // the typed PayNow reference
-          finalRef,             // our AA1234-YYYYMMDD ref
+          paynowReferenceTyped,
+          finalRef,
           remarks,
           event,
+          proofUrl, // 👈 new
         },
       }),
     });
 
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
-      // eslint-disable-next-line no-console
       console.error("appendRegistration failed:", res.status, txt);
       return NextResponse.json({ ok: false, error: "Failed to append to Google Sheet." }, { status: 502 });
     }
@@ -57,9 +83,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    // eslint-disable-next-line no-console
     console.error("register route error:", msg);
     return NextResponse.json({ ok: false, error: "Register route failed." }, { status: 500 });
   }
 }
+
 
