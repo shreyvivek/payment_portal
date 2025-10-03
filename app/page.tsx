@@ -293,7 +293,7 @@ export default function DandiyaRegistrationApp() {
                     className="mt-2 bg-white/10 border-white/20"
                     inputMode="tel"
                     pattern="\+?\d{8,15}"
-                    placeholder="e.g., +65 91234567"
+                    placeholder="e.g., 91234567"
                     required
                   />
                   <p className="text-xs text-amber-200/80 mt-1">
