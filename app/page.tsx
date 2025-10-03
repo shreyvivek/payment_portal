@@ -297,7 +297,7 @@ export default function DandiyaRegistrationApp() {
                     required
                   />
                   <p className="text-xs text-amber-200/80 mt-1">
-                    Use digits only, with optional +country code.
+                    Use digits only, do not enter country code, no spaces.
                   </p>
                 </div>
                 <div>
