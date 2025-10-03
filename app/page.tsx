@@ -204,7 +204,7 @@ export default function DandiyaRegistrationApp() {
               <img
                 src={CONFIG.images.ntuLogo}
                 alt="NTU"
-                className="h-10 sm:h-12 w-auto rounded-md bg-white/80 p-1 shadow"
+                className="h-12 sm:h-14 md:h-16 w-auto object-contain drop-shadow-md"
               />
               <div>
                 <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight text-yellow-100 drop-shadow-md">
@@ -224,7 +224,7 @@ export default function DandiyaRegistrationApp() {
               <img
                 src={CONFIG.images.dandiyaSticks}
                 alt="Dandiya sticks"
-                className="h-14 sm:h-16 w-auto rounded-xl bg-white/80 p-1 shadow"
+                className="h-12 sm:h-14 md:h-16 w-auto object-contain drop-shadow-md"
               />
             </div>
           </div>
