@@ -477,10 +477,10 @@ export default function DandiyaRegistrationApp() {
                 <div>
                   <h3 className="font-semibold">What happens next</h3>
                   <p className="text-amber-100/90 mt-2 text-sm">
-                    We’ve received your registration. You’ll get a confirmation message to join the Telegram channel after we verify your payment.
+                    We’ve received your registration. Excited to see you on 11th October, Saturday.
                   </p>
                   <p className="text-amber-100 mt-3 text-sm font-bold">
-                    Bring a payment proof screenshot on entry (mandatory).
+                    Keep a payment proof screenshot on entry (if requested by us).
                   </p>
                   <div className="mt-4 p-4 rounded-xl bg-[#3f1a12]/50 border border-amber-100/20 text-sm">
                     <div className="text-amber-200/80">Your Details</div>
@@ -500,11 +500,11 @@ export default function DandiyaRegistrationApp() {
                   <ul className="text-sm text-amber-100/90 mt-2 space-y-2 list-disc list-inside">
                     <li>📍 <b>{CONFIG.event.venue}</b>, {CONFIG.event.city}</li>
                     <li>🗓️ <b>{CONFIG.event.dateStr}</b></li>
-                    <li>🕕 <b>{CONFIG.event.timeStr}</b> (doors open 5:30 PM)</li>
-                    <li><b>Dress code: Ethnic Wear only.</b></li>
+                    <li>🕕 <b>{CONFIG.event.timeStr}</b> (doors open 6:00 PM)</li>
+                    <li><b>Dress code: Preferably Ethnic Wear.</b></li>
                   </ul>
                   <div className="mt-4 text-xs text-amber-200/80">
-                    Need help? DM <span className="font-medium">@rakshita_bubna</span>,{" "}
+                    Need help with anything? DM <span className="font-medium">@rakshita_bubna</span>,{" "}
                     <span className="font-medium">@madhavvth</span> or{" "}
                     <span className="font-medium">@shreyvivek</span> on Telegram or{" "}
                     <span className="font-medium">@indsoc_ntu</span> on Instagram.
