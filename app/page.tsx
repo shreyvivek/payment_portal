@@ -12,9 +12,9 @@ import { Textarea } from "@/components/ui/textarea";
 const CONFIG = {
   pricing: {
     NTU: 6,
-    OTHER_BASE: 12,
+    OTHER_BASE: 10,
     OTHER_SURGE: 12,
-    NON_NTU_THRESHOLD: 0,
+    NON_NTU_THRESHOLD: 50,
   },
   images: {
     ntuLogo: "/ntu-logo.jpeg",
